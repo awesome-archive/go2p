@@ -210,7 +210,6 @@ func TestRouting(t *testing.T) {
 }
 
 func TestLargeMessages(t *testing.T) {
-
 	var conn1 *networkConnWithAddress
 	var conn2 *networkConnWithAddress
 	largeMsg := genLargeMessage(256)
@@ -246,6 +245,48 @@ func TestLargeMessages(t *testing.T) {
 
 	conn1.net.Stop()
 	conn2.net.Stop()
+}
+
+func TestDisconnect(t *testing.T) {
+
+	var conn1 *networkConnWithAddress
+	var conn2 *networkConnWithAddress
+
+	conn1, conn2 = createTestNetworks(t, &map[string]func(peer *go2p.Peer, msg *go2p.Message){})
+
+	peerConnectedWg := sync.WaitGroup{}
+	peerConnectedWg.Add(2)
+
+	var conn2Peer *go2p.Peer = nil
+	conn1.net.OnPeer(func(peer *go2p.Peer) {
+		peerConnectedWg.Done()
+		conn2Peer = peer
+	})
+
+	conn2.net.OnPeer(func(peer *go2p.Peer) {
+		peerConnectedWg.Done()
+	})
+
+	registerPeerErrorHandlers(t, conn1.net, conn2.net)
+	if !startNetworks(t, conn1.net, conn2.net) {
+		return
+	}
+
+	conn1.net.ConnectTo("tcp", conn2.addr)
+	peerConnectedWg.Wait()
+
+	testDone := sync.WaitGroup{}
+	testDone.Add(1)
+	conn1.net.OnPeerDisconnect(func(peer *go2p.Peer) {
+		testDone.Done()
+	})
+
+	conn1.net.DisconnectFrom(conn2Peer.RemoteAddress())
+
+	testDone.Wait()
+
+	conn1.net.Stop()
+
 }
 
 func genLargeMessage(chars int) string {
